@@ -1,0 +1,12 @@
+[submodule "mqtt"]
+	path = mqtt
+	url = https://github.com/tuanpmt/esp_mqtt/
+[submodule "tools"]
+	path = tools
+	url = https://github.com/themadinventor/esptool
+[submodule "tools/esptool"]
+	path = tools/esptool
+	url = https://github.com/themadinventor/esptool
+[submodule "mqtt@70d19cb"]
+	path = mqtt@70d19cb
+	url = https://github.com/tuanpmt/esp_mqtt/
