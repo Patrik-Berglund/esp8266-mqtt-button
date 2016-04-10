@@ -17,8 +17,8 @@
 #define MQTT_USER			""
 #define MQTT_PASS			""
 
-#define STA_SSID "TeliaGateway08-76-FF-4A-67-AC"
-#define STA_PASS "E85B2DD136"
+#define STA_SSID "SSID"
+#define STA_PASS "Password"
 #define STA_TYPE AUTH_WPA2_PSK
 
 #define MQTT_RECONNECT_TIMEOUT 	5	/*second*/

@@ -39,6 +39,8 @@
 #include "mem.h"
 
 MQTT_Client mqttClient;
+static volatile os_timer_t debounceTimer;
+bool mqttConnected = false;
 
 void ICACHE_FLASH_ATTR wifiConnectCb(uint8_t status){
 	if(status == STATION_GOT_IP){
@@ -51,11 +53,13 @@ void ICACHE_FLASH_ATTR wifiConnectCb(uint8_t status){
 void ICACHE_FLASH_ATTR mqttConnectedCb(uint32_t *args){
 	MQTT_Client* client = (MQTT_Client*)args;
 	INFO("MQTT: Connected\n");
+    mqttConnected = true;
 }
 
 void ICACHE_FLASH_ATTR mqttDisconnectedCb(uint32_t *args){
 	MQTT_Client* client = (MQTT_Client*)args;
 	INFO("MQTT: Disconnected\n");
+    mqttConnected = false;
 }
 
 void ICACHE_FLASH_ATTR mqttPublishedCb(uint32_t *args){
@@ -64,12 +68,7 @@ void ICACHE_FLASH_ATTR mqttPublishedCb(uint32_t *args){
 }
 
 void ICACHE_FLASH_ATTR mqttParseMessage(const char* topic, uint32_t topic_len, const char *data, uint32_t data_len){
-	// if(strcmpi(topic, MQTT_TOPIC_NEXA_BRIDGE_SEND) == 0){
-    //     parseNexaSendMessage(data, data_len);
-	// }
-	// else{
-	// 	INFO("MQTT: Unknown topic\n");
-	// }
+	INFO("MQTT: Unknown topic\n");
 }
 
 void ICACHE_FLASH_ATTR mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const char *data, uint32_t data_len){
@@ -92,10 +91,47 @@ void ICACHE_FLASH_ATTR mqttDataCb(uint32_t *args, const char* topic, uint32_t to
 	os_free(dataBuf);
 }
 
+void publishButton(void){
+	char *msg;	
+
+	if(mqttConnected){       	
+        MQTT_Publish(&mqttClient, MQTT_BUTTON_TOPIC, msg, 0, 0, 0);	
+	}    
+}
+
+void ICACHE_FLASH_ATTR GPIO_INTERRUPT(uint32_t *args){
+  uint32_t status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+  
+  //GPIO2
+  if (status & BIT(2))
+  {
+      gpio_pin_intr_state_set(GPIO_ID_PIN(2), GPIO_PIN_INTR_DISABLE);
+      GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, status & BIT(2));
+      os_timer_arm(&debounceTimer, 1000, 0);
+      publishButton();
+  }        
+}
+
+void ICACHE_FLASH_ATTR debounceCb(uint32_t *args){
+    os_timer_disarm(&debounceTimer);    
+    gpio_pin_intr_state_set(GPIO_ID_PIN(2), GPIO_PIN_INTR_NEGEDGE);
+}
+
 void ICACHE_FLASH_ATTR gpioSetup(void){
     gpio_init();
-    //PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);
-	//gpio_output_set(0, BIT2, BIT2, 0);
+    
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);               //GPIO Alternate Function
+    PIN_PULLUP_EN(PERIPHS_IO_MUX_GPIO2_U);                             //Pull up
+    GPIO_DIS_OUTPUT(GPIO_ID_PIN(2));                                   //Configure it in input mode.
+    ETS_GPIO_INTR_DISABLE();                                           //Close the GPIO interrupt
+    ETS_GPIO_INTR_ATTACH(GPIO_INTERRUPT,NULL);                         //Register the interrupt function
+    gpio_pin_intr_state_set(GPIO_ID_PIN(2), GPIO_PIN_INTR_NEGEDGE);    //Falling edge trigger
+    ETS_GPIO_INTR_ENABLE();                                            //Enable the GPIO interrupt    
+}
+
+void ICACHE_FLASH_ATTR debounceSetup(void){
+    os_timer_disarm(&debounceTimer);
+    os_timer_setfn(&debounceTimer, (os_timer_func_t *)debounceCb, NULL);
 }
 
 void ICACHE_FLASH_ATTR user_init(void){
@@ -110,6 +146,7 @@ void ICACHE_FLASH_ATTR user_init(void){
 	CFG_Load();
 
 	gpioSetup();
+    debounceSetup();
 
 	MQTT_InitConnection(&mqttClient, sysCfg.mqtt_host, sysCfg.mqtt_port, sysCfg.security);
 	MQTT_InitClient(&mqttClient, sysCfg.device_id, sysCfg.mqtt_user, sysCfg.mqtt_pass, sysCfg.mqtt_keepalive, 1);
